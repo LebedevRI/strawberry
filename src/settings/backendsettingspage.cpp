@@ -75,6 +75,7 @@ BackendSettingsPage::BackendSettingsPage(SettingsDialog *dialog, QWidget *parent
   ui_->label_replaygainfallbackgain->setMinimumWidth(QFontMetrics(ui_->label_replaygainfallbackgain->font()).horizontalAdvance("-WW.W dB"));
 
   ui_->label_ebur128_target_level->setMinimumWidth(QFontMetrics(ui_->label_ebur128_target_level->font()).horizontalAdvance("-WW.W LUFS"));
+  ui_->label_ebur128_maximal_loudness_range->setMinimumWidth(QFontMetrics(ui_->label_ebur128_maximal_loudness_range->font()).horizontalAdvance("WW.W LU"));
 
   QObject::connect(ui_->combobox_engine, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &BackendSettingsPage::EngineChanged);
   QObject::connect(ui_->combobox_output, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &BackendSettingsPage::OutputChanged);
@@ -89,6 +90,7 @@ BackendSettingsPage::BackendSettingsPage(SettingsDialog *dialog, QWidget *parent
   QObject::connect(ui_->stickyslider_replaygainfallbackgain, &StickySlider::valueChanged, this, &BackendSettingsPage::RgFallbackGainChanged);
 #ifdef HAVE_GSTREAMER
   QObject::connect(ui_->stickyslider_ebur128_target_level, &StickySlider::valueChanged, this, &BackendSettingsPage::EbuR128TargetLevelChanged);
+  QObject::connect(ui_->stickyslider_ebur128_maximal_loudness_range, &StickySlider::valueChanged, this, &BackendSettingsPage::EbuR128MaximalLoudnessRangeChanged);
 #endif
   QObject::connect(ui_->checkbox_fadeout_stop, &QCheckBox::toggled, this, &BackendSettingsPage::FadingOptionsChanged);
   QObject::connect(ui_->checkbox_fadeout_cross, &QCheckBox::toggled, this, &BackendSettingsPage::FadingOptionsChanged);
@@ -174,12 +176,17 @@ void BackendSettingsPage::Load() {
 
 #ifdef HAVE_GSTREAMER
   ui_->groupbox_ebur128_loudness_normalization->show();
+  ui_->groupbox_ebur128_loudness_range_compression->show();
 #else
   ui_->groupbox_ebur128_loudness_normalization->hide();
+  ui_->groupbox_ebur128_loudness_range_compression->hide();
 #endif
 
   ui_->radiobutton_ebur128_loudness_normalization->setChecked(s.value("ebur128_loudness_normalization", false).toBool());
   ui_->stickyslider_ebur128_target_level->setValue(static_cast<int>(s.value("ebur128_target_level_lufs", -23.0).toDouble() * 10));
+
+  ui_->checkbox_ebur128_loudness_range_compression->setChecked(s.value("ebur128_loudness_range_compression", false).toBool());
+  ui_->stickyslider_ebur128_maximal_loudness_range->setValue(static_cast<int>(s.value("ebur128_maximal_loudness_range_lu", 12.0).toDouble() * 10));
 
 #ifdef HAVE_ALSA
   bool fade_default = false;
@@ -213,6 +220,7 @@ void BackendSettingsPage::Load() {
 
 #ifdef HAVE_GSTREAMER
   EbuR128TargetLevelChanged(ui_->stickyslider_ebur128_target_level->value());
+  EbuR128MaximalLoudnessRangeChanged(ui_->stickyslider_ebur128_maximal_loudness_range->value());
 #endif
 
   Init(ui_->layout_backendsettingspage->parentWidget());
@@ -270,6 +278,7 @@ void BackendSettingsPage::Load_Engine(const EngineBase::Type enginetype) {
 
   ui_->groupbox_replaygain->setEnabled(false);
   ui_->groupbox_ebur128_loudness_normalization->setEnabled(false);
+  ui_->groupbox_ebur128_loudness_range_compression->setEnabled(false);
 
   if (engine()->type() != enginetype) {
     qLog(Debug) << "Switching engine.";
@@ -324,11 +333,13 @@ void BackendSettingsPage::Load_Output(QString output, QVariant device) {
     ui_->groupbox_buffer->setEnabled(true);
     ui_->groupbox_replaygain->setEnabled(true);
     ui_->groupbox_ebur128_loudness_normalization->setEnabled(true);
+    ui_->groupbox_ebur128_loudness_range_compression->setEnabled(true);
   }
   else {
     ui_->groupbox_buffer->setEnabled(false);
     ui_->groupbox_replaygain->setEnabled(false);
     ui_->groupbox_ebur128_loudness_normalization->setEnabled(false);
+    ui_->groupbox_ebur128_loudness_range_compression->setEnabled(false);
   }
 
   if (ui_->combobox_output->count() >= 1) Load_Device(output, device);
@@ -504,6 +515,9 @@ void BackendSettingsPage::Save() {
   s.setValue("ebur128_loudness_normalization", ui_->radiobutton_ebur128_loudness_normalization->isChecked());
   s.setValue("ebur128_target_level_lufs", static_cast<double>(ui_->stickyslider_ebur128_target_level->value()) / 10);
 
+  s.setValue("ebur128_loudness_range_compression", ui_->checkbox_ebur128_loudness_range_compression->isChecked());
+  s.setValue("ebur128_maximal_loudness_range_lu", static_cast<double>(ui_->stickyslider_ebur128_maximal_loudness_range->value()) / 10);
+
   s.setValue("FadeoutEnabled", ui_->checkbox_fadeout_stop->isChecked());
   s.setValue("CrossfadeEnabled", ui_->checkbox_fadeout_cross->isChecked());
   s.setValue("AutoCrossfadeEnabled", ui_->checkbox_fadeout_auto->isChecked());
@@ -668,6 +682,14 @@ void BackendSettingsPage::EbuR128TargetLevelChanged(const int value) {
   double db = static_cast<double>(value) / 10;
   QString db_str = QString::asprintf("%+.1f LUFS", db);
   ui_->label_ebur128_target_level->setText(db_str);
+
+}
+
+void BackendSettingsPage::EbuR128MaximalLoudnessRangeChanged(const int value) {
+
+  double db = static_cast<double>(value) / 10;
+  QString db_str = QString::asprintf("%.1f LU", db);
+  ui_->label_ebur128_maximal_loudness_range->setText(db_str);
 
 }
 #endif

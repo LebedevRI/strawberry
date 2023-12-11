@@ -71,6 +71,7 @@ class BackendSettingsPage : public SettingsPage {
   void RgFallbackGainChanged(const int value);
 #ifdef HAVE_GSTREAMER
   void EbuR128TargetLevelChanged(const int value);
+  void EbuR128MaximalLoudnessRangeChanged(const int value);
 #endif
   void radiobutton_alsa_hw_clicked(const bool checked);
   void radiobutton_alsa_plughw_clicked(const bool checked);
