@@ -173,9 +173,9 @@ void BackendSettingsPage::Load() {
   ui_->stickyslider_replaygainfallbackgain->setValue(static_cast<int>(s.value("rgfallbackgain", 0.0).toDouble() * 10 + 600));
 
 #ifdef HAVE_GSTREAMER
-  ui_->groupbox_ebur128->show();
+  ui_->groupbox_ebur128_loudness_normalization->show();
 #else
-  ui_->groupbox_ebur128->hide();
+  ui_->groupbox_ebur128_loudness_normalization->hide();
 #endif
 
   ui_->radiobutton_ebur128_loudness_normalization->setChecked(s.value("ebur128_loudness_normalization", false).toBool());
@@ -269,7 +269,7 @@ void BackendSettingsPage::Load_Engine(const EngineBase::Type enginetype) {
   ui_->lineedit_device->clear();
 
   ui_->groupbox_replaygain->setEnabled(false);
-  ui_->groupbox_ebur128->setEnabled(false);
+  ui_->groupbox_ebur128_loudness_normalization->setEnabled(false);
 
   if (engine()->type() != enginetype) {
     qLog(Debug) << "Switching engine.";
@@ -323,12 +323,12 @@ void BackendSettingsPage::Load_Output(QString output, QVariant device) {
   if (engine()->type() == EngineBase::Type::GStreamer) {
     ui_->groupbox_buffer->setEnabled(true);
     ui_->groupbox_replaygain->setEnabled(true);
-    ui_->groupbox_ebur128->setEnabled(true);
+    ui_->groupbox_ebur128_loudness_normalization->setEnabled(true);
   }
   else {
     ui_->groupbox_buffer->setEnabled(false);
     ui_->groupbox_replaygain->setEnabled(false);
-    ui_->groupbox_ebur128->setEnabled(false);
+    ui_->groupbox_ebur128_loudness_normalization->setEnabled(false);
   }
 
   if (ui_->combobox_output->count() >= 1) Load_Device(output, device);
