@@ -1179,6 +1179,10 @@ if(HAVE_EBUR128)
   target_link_libraries(strawberry_lib PRIVATE PkgConfig::LIBEBUR128)
 endif()
 
+if(HAVE_GSTREAMER)
+  target_link_libraries(strawberry_lib PRIVATE ebur128control)
+endif()
+
 if(X11_FOUND)
   target_include_directories(strawberry_lib SYSTEM PRIVATE ${X11_INCLUDE_DIR})
   target_link_libraries(strawberry_lib PRIVATE ${X11_LIBRARIES})

@@ -42,6 +42,10 @@
 #  include "ext/gstmoodbar/gstmoodbarplugin.h"
 #endif
 
+#ifdef HAVE_GSTREAMER
+#  include "ext/ebur128control/ebur128control.h"
+#endif
+
 #include "gststartup.h"
 
 GThread *GstStartup::kGThread = nullptr;
@@ -82,6 +86,9 @@ void GstStartup::InitializeGStreamer() {
 
 #ifdef HAVE_MOODBAR
   gstfastspectrum_register_static();
+#endif
+#ifdef HAVE_GSTREAMER
+  GST_PLUGIN_STATIC_REGISTER(strawberry_ebur128control);
 #endif
 
 #ifdef Q_OS_WIN32
