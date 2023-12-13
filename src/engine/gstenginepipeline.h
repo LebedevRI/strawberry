@@ -67,6 +67,7 @@ class GstEnginePipeline : public QObject {
   void set_equalizer_enabled(const bool enabled);
   void set_replaygain(const bool enabled, const int mode, const double preamp, const double fallbackgain, const bool compression);
   void set_ebur128_loudness_normalization(const bool enabled);
+  void set_ebur128_target_level_lufs(const double ebur128_target_level_lufs);
   void set_buffer_duration_nanosec(const quint64 duration_nanosec);
   void set_buffer_low_watermark(const double value);
   void set_buffer_high_watermark(const double value);
@@ -225,6 +226,7 @@ class GstEnginePipeline : public QObject {
 
   // EBU R 128 Loudness Normalization
   bool ebur128_loudness_normalization_;
+  double ebur128_target_level_lufs_;
 
   // Buffering
   quint64 buffer_duration_nanosec_;

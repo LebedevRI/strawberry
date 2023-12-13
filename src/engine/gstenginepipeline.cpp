@@ -86,6 +86,7 @@ GstEnginePipeline::GstEnginePipeline(QObject *parent)
       rg_fallbackgain_(0.0),
       rg_compression_(true),
       ebur128_loudness_normalization_(false),
+      ebur128_target_level_lufs_(-23.0),
       buffer_duration_nanosec_(BackendSettingsPage::kDefaultBufferDuration * kNsecPerMsec),
       buffer_low_watermark_(BackendSettingsPage::kDefaultBufferLowWatermark),
       buffer_high_watermark_(BackendSettingsPage::kDefaultBufferHighWatermark),
@@ -251,6 +252,12 @@ void GstEnginePipeline::set_replaygain(const bool enabled, const int mode, const
 void GstEnginePipeline::set_ebur128_loudness_normalization(const bool enabled) {
 
   ebur128_loudness_normalization_ = enabled;
+
+}
+
+void GstEnginePipeline::set_ebur128_target_level_lufs(const double ebur128_target_level_lufs) {
+
+  ebur128_target_level_lufs_ = ebur128_target_level_lufs;
 
 }
 
