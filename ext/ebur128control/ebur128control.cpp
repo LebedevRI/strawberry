@@ -17,6 +17,7 @@
  *
  */
 
+#include <cmath>
 #include <glib-object.h>
 #include <glib.h>
 #include <glibconfig.h>
@@ -52,7 +53,8 @@ struct _EBUR128Control {
   GstAudioFilter element;
 
   struct Properties {
-    gdouble volume;
+    gdouble integrated_loudness_lufs;
+    gdouble target_level_lufs;
   } properties;
 
   struct Params {
@@ -119,9 +121,23 @@ void commit_params(EBUR128Control *self, const GstAudioInfo *info,
   self->committed_params.volume = mute_volume;
   self->committed_params.negotiated = false;
 
-  GST_DEBUG_OBJECT(self, "configure volume %f", properties.volume);
+  GST_DEBUG_OBJECT(self, "configure integrated loudness %f lufs", properties.integrated_loudness_lufs);
+  GST_DEBUG_OBJECT(self, "configure target level %f lufs", properties.target_level_lufs);
 
-  self->committed_params.volume = properties.volume;
+  auto computeGain_dB = [](double source_dB, double target_dB) {
+    // Let's suppose the `source_dB` is -12 dB, while `target_dB` is -23 dB.
+    // In that case, we'd need to apply -11 dB of gain, which is computed as:
+    //   -12 dB + x dB = -23 dB --> x dB = -23 dB - (-12 dB)
+    return target_dB - source_dB;
+  };
+
+  auto dB_to_mult = [](const double gain_dB) { return std::pow(10., gain_dB / 20.); };
+
+  double loudness_normalizing_gain_db = computeGain_dB(properties.integrated_loudness_lufs, properties.target_level_lufs);
+
+  self->committed_params.volume = dB_to_mult(loudness_normalizing_gain_db);
+
+  GST_DEBUG_OBJECT(self, "configure volume %f", self->committed_params.volume);
 
   bool passthrough;
   switch (GST_AUDIO_INFO_FORMAT(info)) {
@@ -180,7 +196,8 @@ gboolean setup(GstAudioFilter *filter, const GstAudioInfo *info) {
 }
 
 enum class Properties : guint {
-  Volume = 1,
+  IntegratedLoudness = 1,
+  TargetLevel,
 };
 
 void set_property(GObject *object, guint prop_id, const GValue *value,
@@ -189,9 +206,14 @@ void set_property(GObject *object, guint prop_id, const GValue *value,
   EBUR128Control *self = EBUR128CONTROL(object);
 
   switch (static_cast<Properties>(prop_id)) {
-  case Properties::Volume:
+  case Properties::IntegratedLoudness:
     GST_OBJECT_LOCK(self);
-    self->properties.volume = g_value_get_double(value);
+    self->properties.integrated_loudness_lufs = g_value_get_double(value);
+    GST_OBJECT_UNLOCK(self);
+    break;
+  case Properties::TargetLevel:
+    GST_OBJECT_LOCK(self);
+    self->properties.target_level_lufs = g_value_get_double(value);
     GST_OBJECT_UNLOCK(self);
     break;
   default:
@@ -207,9 +229,14 @@ void get_property(GObject *object, guint prop_id, GValue *value,
   EBUR128Control *self = EBUR128CONTROL(object);
 
   switch (static_cast<Properties>(prop_id)) {
-  case Properties::Volume:
+  case Properties::IntegratedLoudness:
     GST_OBJECT_LOCK(self);
-    g_value_set_double(value, self->properties.volume);
+    g_value_set_double(value, self->properties.integrated_loudness_lufs);
+    GST_OBJECT_UNLOCK(self);
+    break;
+  case Properties::TargetLevel:
+    GST_OBJECT_LOCK(self);
+    g_value_set_double(value, self->properties.target_level_lufs);
     GST_OBJECT_UNLOCK(self);
     break;
   default:
@@ -221,7 +248,8 @@ void get_property(GObject *object, guint prop_id, GValue *value,
 
 void ebur128control_init(EBUR128Control *self) {
 
-  self->properties.volume = neutral_volume;
+  self->properties.integrated_loudness_lufs = -23.0;
+  self->properties.target_level_lufs = -23.0;
 
   self->committed_params.process = nullptr;
   self->committed_params.volume = mute_volume;
@@ -245,11 +273,18 @@ void ebur128control_class_init(EBUR128ControlClass *klass) {
   gobject_class->get_property = get_property;
 
   g_object_class_install_property(
-      gobject_class, static_cast<guint>(Properties::Volume),
-      g_param_spec_double("volume", "Volume", "volume factor, 1.0=100%", 0.0,
-                          G_MAXDOUBLE, mute_volume,
-                          static_cast<GParamFlags>(G_PARAM_READWRITE |
-                                                   G_PARAM_STATIC_STRINGS)));
+      gobject_class, static_cast<guint>(Properties::IntegratedLoudness),
+      g_param_spec_double("integrated_loudness_lufs", "integrated loudness",
+                          "EBU R 128 Integrated Loudness [LUFS]", -G_MAXDOUBLE,
+                          G_MAXDOUBLE, -23.0,
+                          static_cast<GParamFlags>(G_PARAM_READWRITE)));
+
+  g_object_class_install_property(
+      gobject_class, static_cast<guint>(Properties::TargetLevel),
+      g_param_spec_double("target_level_lufs", "target level",
+                          "EBU R 128 Target Level [LUFS]", -G_MAXDOUBLE,
+                          G_MAXDOUBLE, -23.0,
+                          static_cast<GParamFlags>(G_PARAM_READWRITE)));
 
   auto *filter_class = reinterpret_cast<GstAudioFilterClass *>(klass);
 
