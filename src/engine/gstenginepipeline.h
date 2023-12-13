@@ -77,7 +77,7 @@ class GstEnginePipeline : public QObject {
   void set_fading_enabled(const bool enabled);
 
   // Creates the pipeline, returns false on error
-  bool InitFromUrl(const QUrl &media_url, const QUrl &stream_url, const QByteArray &gst_url, const qint64 end_nanosec, const double ebur128_loudness_normalizing_gain_db, QString &error);
+  bool InitFromUrl(const QUrl &media_url, const QUrl &stream_url, const QByteArray &gst_url, const qint64 end_nanosec, QString &error);
 
   // GstBufferConsumers get fed audio data.  Thread-safe.
   void AddBufferConsumer(GstBufferConsumer *consumer);

@@ -132,7 +132,7 @@ class GstEngine : public EngineBase, public GstBufferConsumer {
   void StopTimers();
 
   SharedPtr<GstEnginePipeline> CreatePipeline();
-  SharedPtr<GstEnginePipeline> CreatePipeline(const QUrl &media_url, const QUrl &stream_url, const QByteArray &gst_url, const qint64 end_nanosec, const double ebur128_loudness_normalizing_gain_db);
+  SharedPtr<GstEnginePipeline> CreatePipeline(const QUrl &media_url, const QUrl &stream_url, const QByteArray &gst_url, const qint64 end_nanosec);
 
   void UpdateScope(int chunk_length);
 

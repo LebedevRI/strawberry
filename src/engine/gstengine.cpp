@@ -200,8 +200,10 @@ bool GstEngine::Load(const QUrl &media_url, const QUrl &stream_url, const Engine
     return true;
   }
 
-  SharedPtr<GstEnginePipeline> pipeline = CreatePipeline(media_url, stream_url, gst_url, force_stop_at_end ? end_nanosec : 0, ebur128_loudness_normalizing_gain_db_);
+  SharedPtr<GstEnginePipeline> pipeline = CreatePipeline(media_url, stream_url, gst_url, force_stop_at_end ? end_nanosec : 0);
   if (!pipeline) return false;
+
+  pipeline->SetEBUR128LoudnessNormalizingGain_dB(ebur128_loudness_normalizing_gain_db_);
 
   if (crossfade) StartFadeout();
 
@@ -653,7 +655,9 @@ void GstEngine::PlayDone(const GstStateChangeReturn ret, const quint64 offset_na
     const QByteArray redirect_url = current_pipeline_->redirect_url();
     if (!redirect_url.isEmpty() && redirect_url != current_pipeline_->gst_url()) {
       qLog(Info) << "Redirecting to" << redirect_url;
-      current_pipeline_ = CreatePipeline(current_pipeline_->media_url(), current_pipeline_->stream_url(), redirect_url, end_nanosec_, current_pipeline_->ebur128_loudness_normalizing_gain_db());
+      auto new_pipeline = CreatePipeline(current_pipeline_->media_url(), current_pipeline_->stream_url(), redirect_url, end_nanosec_);
+      new_pipeline->SetEBUR128LoudnessNormalizingGain_dB(current_pipeline_->ebur128_loudness_normalizing_gain_db());
+      current_pipeline_ = std::move(new_pipeline);
       Play(offset_nanosec);
       return;
     }
@@ -821,11 +825,11 @@ SharedPtr<GstEnginePipeline> GstEngine::CreatePipeline() {
 
 }
 
-SharedPtr<GstEnginePipeline> GstEngine::CreatePipeline(const QUrl &media_url, const QUrl &stream_url, const QByteArray &gst_url, const qint64 end_nanosec, const double ebur128_loudness_normalizing_gain_db) {
+SharedPtr<GstEnginePipeline> GstEngine::CreatePipeline(const QUrl &media_url, const QUrl &stream_url, const QByteArray &gst_url, const qint64 end_nanosec) {
 
   SharedPtr<GstEnginePipeline> ret = CreatePipeline();
   QString error;
-  if (!ret->InitFromUrl(media_url, stream_url, gst_url, end_nanosec, ebur128_loudness_normalizing_gain_db, error)) {
+  if (!ret->InitFromUrl(media_url, stream_url, gst_url, end_nanosec, error)) {
     ret.reset();
     emit Error(error);
     emit StateChanged(EngineBase::State::Error);
