@@ -36,6 +36,7 @@
 #include <gst/gstpluginfeature.h>
 #include <gst/gstversion.h>
 #include <cstring>
+#include <tuple>
 
 namespace {
 
@@ -57,10 +58,16 @@ struct _EBUR128Control {
     gdouble target_level_lufs;
   } properties;
 
-  struct Params {
-    void (*process)(EBUR128Control *, gpointer, guint);
-
+  struct XFormedProperties {
     gdouble volume;
+
+    gboolean passthrough;
+  } xformed_properties;
+
+  struct Params {
+    XFormedProperties p;
+
+    void (*process)(EBUR128Control *, gpointer, guint);
 
     gboolean negotiated;
   } committed_params;
@@ -73,7 +80,7 @@ GST_DEBUG_CATEGORY_STATIC(GST_CAT_DEFAULT);
 template <typename T>
 void process(EBUR128Control *self, gpointer bytes, guint n_bytes) {
 
-  T vol = self->committed_params.volume;
+  T vol = self->committed_params.p.volume;
   auto *data = static_cast<T *>(bytes);
   for (guint i = 0, num_samples = n_bytes / sizeof(T); i != num_samples; i++) {
     *data++ *= vol;
@@ -101,10 +108,10 @@ GstFlowReturn transform_ip(GstBaseTransform *base, GstBuffer *outbuf) {
   GstMapInfo map;
   gst_buffer_map(outbuf, &map, GST_MAP_READWRITE);
 
-  if (self->committed_params.volume == mute_volume) {
+  if (self->committed_params.p.volume == mute_volume) {
     memset(map.data, 0, map.size);
     GST_BUFFER_FLAG_SET(outbuf, GST_BUFFER_FLAG_GAP);
-  } else if (self->committed_params.volume != neutral_volume) {
+  } else if (self->committed_params.p.volume != neutral_volume) {
     self->committed_params.process(self, map.data, map.size);
   }
 
@@ -114,44 +121,25 @@ GstFlowReturn transform_ip(GstBaseTransform *base, GstBuffer *outbuf) {
 
 }
 
-void commit_params(EBUR128Control *self, const GstAudioInfo *info,
-                   EBUR128Control::Properties properties) {
+void commit_params(EBUR128Control *self, const GstAudioInfo *info) {
 
   self->committed_params.process = nullptr;
-  self->committed_params.volume = mute_volume;
   self->committed_params.negotiated = false;
 
-  GST_DEBUG_OBJECT(self, "configure integrated loudness %f lufs", properties.integrated_loudness_lufs);
-  GST_DEBUG_OBJECT(self, "configure target level %f lufs", properties.target_level_lufs);
+  GST_DEBUG_OBJECT(self, "configure integrated loudness %f lufs",
+                   self->properties.integrated_loudness_lufs);
+  GST_DEBUG_OBJECT(self, "configure target level %f lufs",
+                   self->properties.target_level_lufs);
 
-  auto computeGain_dB = [](double source_dB, double target_dB) {
-    // Let's suppose the `source_dB` is -12 dB, while `target_dB` is -23 dB.
-    // In that case, we'd need to apply -11 dB of gain, which is computed as:
-    //   -12 dB + x dB = -23 dB --> x dB = -23 dB - (-12 dB)
-    return target_dB - source_dB;
-  };
+  self->committed_params.p = self->xformed_properties;
 
-  auto dB_to_mult = [](const double gain_dB) { return std::pow(10., gain_dB / 20.); };
+  GST_DEBUG_OBJECT(self, "configure volume %f",
+                   self->committed_params.p.volume);
+  GST_DEBUG_OBJECT(self, "set passthrough %d",
+                   self->committed_params.p.passthrough);
 
-  double loudness_normalizing_gain_db = computeGain_dB(properties.integrated_loudness_lufs, properties.target_level_lufs);
-
-  self->committed_params.volume = dB_to_mult(loudness_normalizing_gain_db);
-
-  GST_DEBUG_OBJECT(self, "configure volume %f", self->committed_params.volume);
-
-  bool passthrough;
-  switch (GST_AUDIO_INFO_FORMAT(info)) {
-  case GST_AUDIO_FORMAT_F32:
-  case GST_AUDIO_FORMAT_F64:
-    passthrough = (self->committed_params.volume == neutral_volume);
-    break;
-  default:
-    return;
-  }
-
-  GST_DEBUG_OBJECT(self, "set passthrough %d", passthrough);
-
-  gst_base_transform_set_passthrough(GST_BASE_TRANSFORM(self), passthrough);
+  gst_base_transform_set_passthrough(GST_BASE_TRANSFORM(self),
+                                     self->committed_params.p.passthrough);
 
   switch (GST_AUDIO_INFO_FORMAT(info)) {
   case GST_AUDIO_FORMAT_F32:
@@ -168,23 +156,11 @@ void commit_params(EBUR128Control *self, const GstAudioInfo *info,
 
 }
 
-// Returns a snapshot (a copy) of currently-set properties.
-EBUR128Control::Properties copy_properties(EBUR128Control *self) {
-
-  GST_OBJECT_LOCK(self);
-  EBUR128Control::Properties properties = self->properties;
-  GST_OBJECT_UNLOCK(self);
-
-  return properties;
-
-}
-
 gboolean setup(GstAudioFilter *filter, const GstAudioInfo *info) {
 
   EBUR128Control *self = EBUR128CONTROL(filter);
 
-  EBUR128Control::Properties properties = copy_properties(self);
-  commit_params(self, info, properties);
+  commit_params(self, info);
 
   if (!self->committed_params.negotiated) {
     GST_ELEMENT_ERROR(self, CORE, NEGOTIATION, ("Invalid incoming format"),
@@ -192,6 +168,36 @@ gboolean setup(GstAudioFilter *filter, const GstAudioInfo *info) {
   }
 
   return self->committed_params.negotiated;
+
+}
+
+EBUR128Control::XFormedProperties
+xform_properties(EBUR128Control::Properties properties) {
+
+  EBUR128Control::XFormedProperties p;
+
+  p.volume = mute_volume;
+  p.passthrough = false;
+
+  auto computeGain_dB = [](double source_dB, double target_dB) {
+    // Let's suppose the `source_dB` is -12 dB, while `target_dB` is -23 dB.
+    // In that case, we'd need to apply -11 dB of gain, which is computed as:
+    //   -12 dB + x dB = -23 dB --> x dB = -23 dB - (-12 dB)
+    return target_dB - source_dB;
+  };
+
+  auto dB_to_mult = [](const double gain_dB) {
+    return std::pow(10., gain_dB / 20.);
+  };
+
+  double loudness_normalizing_gain_db = computeGain_dB(
+      properties.integrated_loudness_lufs, properties.target_level_lufs);
+
+  p.volume = dB_to_mult(loudness_normalizing_gain_db);
+
+  p.passthrough = (p.volume == neutral_volume);
+
+  return p;
 
 }
 
@@ -205,21 +211,33 @@ void set_property(GObject *object, guint prop_id, const GValue *value,
 
   EBUR128Control *self = EBUR128CONTROL(object);
 
+  GST_OBJECT_LOCK(self);
+
   switch (static_cast<Properties>(prop_id)) {
   case Properties::IntegratedLoudness:
-    GST_OBJECT_LOCK(self);
     self->properties.integrated_loudness_lufs = g_value_get_double(value);
-    GST_OBJECT_UNLOCK(self);
     break;
   case Properties::TargetLevel:
-    GST_OBJECT_LOCK(self);
     self->properties.target_level_lufs = g_value_get_double(value);
-    GST_OBJECT_UNLOCK(self);
     break;
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
-    break;
+    GST_OBJECT_UNLOCK(self);
+    return;
   }
+
+  auto new_xformed_properties = xform_properties(self->properties);
+
+  bool should_reconfigure_sink = new_xformed_properties.passthrough !=
+                                 self->xformed_properties.passthrough;
+
+  self->xformed_properties = new_xformed_properties;
+
+  GST_OBJECT_UNLOCK(self);
+
+  if (should_reconfigure_sink)
+    gst_base_transform_reconfigure_sink(GST_BASE_TRANSFORM(self));
+
 
 }
 
@@ -251,8 +269,11 @@ void ebur128control_init(EBUR128Control *self) {
   self->properties.integrated_loudness_lufs = -23.0;
   self->properties.target_level_lufs = -23.0;
 
+  self->xformed_properties.volume = neutral_volume;
+  self->xformed_properties.passthrough = true;
+
+  self->committed_params.p = self->xformed_properties;
   self->committed_params.process = nullptr;
-  self->committed_params.volume = mute_volume;
   self->committed_params.negotiated = false;
 
   gst_base_transform_set_gap_aware(GST_BASE_TRANSFORM(self), true);
