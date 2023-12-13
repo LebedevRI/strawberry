@@ -196,14 +196,14 @@ bool GstEngine::Load(const QUrl &media_url, const QUrl &stream_url, const Engine
 
   if (!crossfade && current_pipeline_ && current_pipeline_->stream_url() == stream_url && change & EngineBase::TrackChangeType::Auto) {
     // We're not crossfading, and the pipeline is already playing the URI we want, so just do nothing.
-    current_pipeline_->SetEBUR128LoudnessNormalizingGain_dB(ebur128_loudness_normalizing_gain_db_);
+    current_pipeline_->SetEBUR128IntegratedLoudness_LUFS(ebur128_integrated_loudness_lufs);
     return true;
   }
 
   SharedPtr<GstEnginePipeline> pipeline = CreatePipeline(media_url, stream_url, gst_url, force_stop_at_end ? end_nanosec : 0);
   if (!pipeline) return false;
 
-  pipeline->SetEBUR128LoudnessNormalizingGain_dB(ebur128_loudness_normalizing_gain_db_);
+  pipeline->SetEBUR128IntegratedLoudness_LUFS(ebur128_integrated_loudness_lufs);
 
   if (crossfade) StartFadeout();
 
@@ -656,7 +656,7 @@ void GstEngine::PlayDone(const GstStateChangeReturn ret, const quint64 offset_na
     if (!redirect_url.isEmpty() && redirect_url != current_pipeline_->gst_url()) {
       qLog(Info) << "Redirecting to" << redirect_url;
       auto new_pipeline = CreatePipeline(current_pipeline_->media_url(), current_pipeline_->stream_url(), redirect_url, end_nanosec_);
-      new_pipeline->SetEBUR128LoudnessNormalizingGain_dB(current_pipeline_->ebur128_loudness_normalizing_gain_db());
+      new_pipeline->SetEBUR128IntegratedLoudness_LUFS(current_pipeline_->ebur128_integrated_loudness_lufs());
       current_pipeline_ = std::move(new_pipeline);
       Play(offset_nanosec);
       return;

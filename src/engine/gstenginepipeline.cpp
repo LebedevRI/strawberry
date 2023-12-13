@@ -86,6 +86,7 @@ GstEnginePipeline::GstEnginePipeline(QObject *parent)
       rg_fallbackgain_(0.0),
       rg_compression_(true),
       ebur128_loudness_normalization_(false),
+      ebur128_integrated_loudness_lufs_(std::nullopt),
       ebur128_target_level_lufs_(-23.0),
       buffer_duration_nanosec_(BackendSettingsPage::kDefaultBufferDuration * kNsecPerMsec),
       buffer_low_watermark_(BackendSettingsPage::kDefaultBufferLowWatermark),
@@ -109,7 +110,6 @@ GstEnginePipeline::GstEnginePipeline(QObject *parent)
       last_known_position_ns_(0),
       next_uri_set_(false),
       next_uri_reset_(false),
-      ebur128_loudness_normalizing_gain_db_(0.0),
       volume_set_(false),
       volume_internal_(-1.0),
       volume_percent_(100),
@@ -1616,9 +1616,9 @@ void GstEnginePipeline::SeekDelayed(const qint64 nanosec) {
 
 }
 
-void GstEnginePipeline::SetEBUR128LoudnessNormalizingGain_dB(const double ebur128_loudness_normalizing_gain_db) {
+void GstEnginePipeline::SetEBUR128IntegratedLoudness_LUFS(const std::optional<double> ebur128_integrated_loudness_lufs) {
 
-  ebur128_loudness_normalizing_gain_db_ = ebur128_loudness_normalizing_gain_db;
+  ebur128_integrated_loudness_lufs_ = ebur128_integrated_loudness_lufs;
   UpdateEBUR128LoudnessNormalizingGaindB();
 
 }
@@ -1626,9 +1626,18 @@ void GstEnginePipeline::SetEBUR128LoudnessNormalizingGain_dB(const double ebur12
 void GstEnginePipeline::UpdateEBUR128LoudnessNormalizingGaindB() {
 
   if (volume_ebur128_) {
+    auto computeGain_dB = [](double source_dB, double target_dB) {
+      // Let's suppose the `source_dB` is -12 dB, while `target_dB` is -23 dB.
+      // In that case, we'd need to apply -11 dB of gain, which is computed as:
+      //   -12 dB + x dB = -23 dB --> x dB = -23 dB - (-12 dB)
+      return target_dB - source_dB;
+    };
+
     auto dB_to_mult = [](const double gain_dB) { return std::pow(10., gain_dB / 20.); };
 
-    g_object_set(G_OBJECT(volume_ebur128_), "volume", dB_to_mult(ebur128_loudness_normalizing_gain_db_), nullptr);
+    double ebur128_loudness_normalizing_gain_db = computeGain_dB(ebur128_integrated_loudness_lufs_.value_or(ebur128_target_level_lufs_), ebur128_target_level_lufs_);
+
+    g_object_set(G_OBJECT(volume_ebur128_), "volume", dB_to_mult(ebur128_loudness_normalizing_gain_db), nullptr);
   }
 
 }

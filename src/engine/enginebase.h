@@ -194,7 +194,6 @@ class EngineBase : public QObject {
   qint64 end_nanosec_;
   QUrl media_url_;
   QUrl stream_url_;
-  double ebur128_loudness_normalizing_gain_db_;
   Scope scope_;
   bool buffering_;
   bool equalizer_enabled_;

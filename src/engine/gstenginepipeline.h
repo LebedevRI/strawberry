@@ -91,7 +91,7 @@ class GstEnginePipeline : public QObject {
   Q_INVOKABLE bool Seek(const qint64 nanosec);
   void SeekQueued(const qint64 nanosec);
   void SeekDelayed(const qint64 nanosec);
-  void SetEBUR128LoudnessNormalizingGain_dB(const double ebur128_loudness_normalizing_gain_db);
+  void SetEBUR128IntegratedLoudness_LUFS(const std::optional<double> ebur128_integrated_loudness_LUFS);
   void SetVolume(const uint volume_percent);
   void SetStereoBalance(const float value);
   void SetEqualizerParams(const int preamp, const QList<int> &band_gains);
@@ -108,7 +108,7 @@ class GstEnginePipeline : public QObject {
   // Get information about the music playback
   QUrl media_url() const { return media_url_; }
   QUrl stream_url() const { return stream_url_; }
-  double ebur128_loudness_normalizing_gain_db() const { return ebur128_loudness_normalizing_gain_db_; }
+  std::optional<double> ebur128_integrated_loudness_lufs() const { return ebur128_integrated_loudness_lufs_; }
   QByteArray gst_url() const { return gst_url_; }
   QUrl next_media_url() const { return next_media_url_; }
   QUrl next_stream_url() const { return next_stream_url_; }
@@ -226,6 +226,7 @@ class GstEnginePipeline : public QObject {
 
   // EBU R 128 Loudness Normalization
   bool ebur128_loudness_normalization_;
+  std::optional<double> ebur128_integrated_loudness_lufs_;
   double ebur128_target_level_lufs_;
 
   // Buffering
@@ -296,7 +297,6 @@ class GstEnginePipeline : public QObject {
   bool next_uri_set_;
   bool next_uri_reset_;
 
-  double ebur128_loudness_normalizing_gain_db_;
   bool volume_set_;
   gdouble volume_internal_;
   uint volume_percent_;

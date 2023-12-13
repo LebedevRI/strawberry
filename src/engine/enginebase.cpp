@@ -43,7 +43,6 @@ EngineBase::EngineBase(QObject *parent)
       volume_(100),
       beginning_nanosec_(0),
       end_nanosec_(0),
-      ebur128_loudness_normalizing_gain_db_(0.0),
       scope_(kScopeSize),
       buffering_(false),
       equalizer_enabled_(false),
@@ -110,23 +109,12 @@ QString EngineBase::Description(const Type type) {
 bool EngineBase::Load(const QUrl &media_url, const QUrl &stream_url, const TrackChangeFlags, const bool force_stop_at_end, const quint64 beginning_nanosec, const qint64 end_nanosec, const std::optional<double> ebur128_integrated_loudness_lufs) {
 
   Q_UNUSED(force_stop_at_end);
+  Q_UNUSED(ebur128_integrated_loudness_lufs);
 
   media_url_ = media_url;
   stream_url_ = stream_url;
   beginning_nanosec_ = beginning_nanosec;
   end_nanosec_ = end_nanosec;
-
-  ebur128_loudness_normalizing_gain_db_ = 0.0;
-  if (ebur128_loudness_normalization_ && ebur128_integrated_loudness_lufs) {
-    auto computeGain_dB = [](double source_dB, double target_dB) {
-      // Let's suppose the `source_dB` is -12 dB, while `target_dB` is -23 dB.
-      // In that case, we'd need to apply -11 dB of gain, which is computed as:
-      //   -12 dB + x dB = -23 dB --> x dB = -23 dB - (-12 dB)
-      return target_dB - source_dB;
-    };
-
-    ebur128_loudness_normalizing_gain_db_ = computeGain_dB(*ebur128_integrated_loudness_lufs, ebur128_target_level_lufs_);
-  }
 
   about_to_end_emitted_ = false;
 
