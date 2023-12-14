@@ -112,6 +112,8 @@ GstFlowReturn transform_ip(GstBaseTransform *base, GstBuffer *outbuf) {
 
   EBUR128Control *self = EBUR128CONTROL(base);
 
+  g_assert(!gst_base_transform_is_passthrough(base));
+
   if (G_UNLIKELY(!self->committed_params.negotiated)) {
     GST_ELEMENT_ERROR(self, CORE, NEGOTIATION, ("No format was negotiated"),
                       (nullptr));
@@ -166,7 +168,8 @@ void commit_params(EBUR128Control *self, const GstAudioInfo *info) {
     self->committed_params.process = process<gdouble>;
     break;
   default:
-    return;
+    g_assert(self->committed_params.p.passthrough);
+    break;
   }
 
   self->committed_params.negotiated = true;
@@ -196,6 +199,75 @@ gboolean setup(GstAudioFilter *filter, const GstAudioInfo *info) {
   }
 
   return self->committed_params.negotiated;
+
+}
+
+GstCaps *template_caps(bool passthrough) {
+
+  static GstStaticCaps passthrough_caps = GST_STATIC_CAPS("audio/x-raw");
+
+  static GstStaticCaps process_caps =
+      GST_STATIC_CAPS("audio/x-raw,"
+                      "format = (string) { F32LE, F64LE }");
+
+  return gst_static_caps_get(passthrough ? &passthrough_caps : &process_caps);
+
+}
+
+GstCaps *sink_getcaps(EBUR128Control *self, GstPad *srcpad,
+                      GstCaps *filter) {
+
+  GstCaps *sink_caps;
+  GstCaps *sink_template_caps =
+      template_caps(/*passthrough=*/self->xformed_properties.passthrough);
+
+  if (GstCaps *downstream_caps = gst_pad_get_allowed_caps(srcpad)) {
+    sink_caps = gst_caps_intersect_full(sink_template_caps, downstream_caps,
+                                        GST_CAPS_INTERSECT_FIRST);
+    gst_caps_unref(downstream_caps);
+  } else {
+    sink_caps = gst_caps_ref(sink_template_caps);
+  }
+  gst_caps_unref(sink_template_caps);
+
+  if (filter) {
+    GstCaps *tmp =
+        gst_caps_intersect_full(sink_caps, filter, GST_CAPS_INTERSECT_FIRST);
+    gst_caps_unref(sink_caps);
+    sink_caps = tmp;
+  }
+
+  return sink_caps;
+
+}
+
+gboolean sink_query_caps(GstPad *pad, GstObject *parent, GstQuery *query) {
+
+  (void)pad;
+
+  EBUR128Control *self = EBUR128CONTROL(parent);
+
+  g_assert (GST_QUERY_TYPE(query) == GST_QUERY_CAPS);
+
+  GstCaps *filter;
+  gst_query_parse_caps(query, &filter);
+
+  GstCaps *caps = sink_getcaps(self, GST_BASE_TRANSFORM(self)->srcpad, filter);
+  gst_query_set_caps_result(query, caps);
+  gst_caps_unref(caps);
+
+  return true;
+
+}
+
+gboolean sink_query(GstPad *pad, GstObject *parent, GstQuery *query) {
+
+  switch (GST_QUERY_TYPE(query)) {
+  case GST_QUERY_CAPS:
+    return sink_query_caps(pad, parent, query);
+  default:
+    return gst_pad_query_default(pad, parent, query);
+  }
 
 }
 
@@ -266,7 +338,6 @@ void set_property(GObject *object, guint prop_id, const GValue *value,
   if (should_reconfigure_sink)
     gst_base_transform_reconfigure_sink(GST_BASE_TRANSFORM(self));
 
-
 }
 
 void get_property(GObject *object, guint prop_id, GValue *value,
@@ -301,10 +372,13 @@ void ebur128control_init(EBUR128Control *self) {
   self->xformed_properties.passthrough = true;
 
   self->committed_params.p = self->xformed_properties;
+
   self->committed_params.process = nullptr;
   self->committed_params.negotiated = false;
 
   gst_base_transform_set_gap_aware(GST_BASE_TRANSFORM(self), true);
+
+  gst_pad_set_query_function (GST_BASE_TRANSFORM(self)->sinkpad, sink_query);
 
 }
 
@@ -337,11 +411,7 @@ void ebur128control_class_init(EBUR128ControlClass *klass) {
 
   auto *filter_class = reinterpret_cast<GstAudioFilterClass *>(klass);
 
-  GstStaticCaps static_caps =
-      GST_STATIC_CAPS("audio/x-raw,"
-                      "format = (string) { F32LE, F64LE }");
-
-  GstCaps *caps = gst_static_caps_get(&static_caps);
+  GstCaps *caps = template_caps(/*passthrough=*/true);
   gst_audio_filter_class_add_pad_templates(filter_class, caps);
   gst_caps_unref(caps);
 
