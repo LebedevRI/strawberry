@@ -1634,6 +1634,7 @@ void GstEnginePipeline::UpdateEBUR128LoudnessNormalizingGaindB() {
 
   if (volume_ebur128_ ) {
     g_object_set(G_OBJECT(volume_ebur128_), "integrated_loudness_lufs", ebur128_integrated_loudness_lufs_.value_or(ebur128_target_level_lufs_), nullptr);
+    g_object_set(G_OBJECT(volume_ebur128_), "loudness_range_lu", ebur128_loudness_range_lu_.value_or(0), nullptr);
     g_object_set(G_OBJECT(volume_ebur128_), "target_level_lufs", ebur128_target_level_lufs_, nullptr);
     g_object_set(G_OBJECT(volume_ebur128_), "perform_loudness_normalization", ebur128_loudness_normalization_ && ebur128_integrated_loudness_lufs_.has_value(), nullptr);
   }
