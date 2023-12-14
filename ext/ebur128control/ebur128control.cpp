@@ -57,6 +57,7 @@ struct _EBUR128Control {
     gdouble integrated_loudness_lufs;
     gdouble loudness_range_lu;
     gdouble target_level_lufs;
+    gdouble maximal_loudness_range_lu;
     gboolean perform_loudness_normalization;
   } properties;
 
@@ -157,6 +158,8 @@ void commit_params(EBUR128Control *self, const GstAudioInfo *info) {
                    self->properties.loudness_range_lu);
   GST_DEBUG_OBJECT(self, "configure target level %f lufs",
                    self->properties.target_level_lufs);
+  GST_DEBUG_OBJECT(self, "configure maximal loudness range %f lu",
+                   self->properties.maximal_loudness_range_lu);
   GST_DEBUG_OBJECT(self, "configure should normalize loudness %i",
                    self->properties.perform_loudness_normalization);
 
@@ -263,6 +266,7 @@ enum class Properties : guint {
   IntegratedLoudness = 1,
   LoudnessRange,
   TargetLevel,
+  MaximalLoudnessRange,
   PerformLoudnessNormalization,
 };
 
@@ -282,6 +286,9 @@ void set_property(GObject *object, guint prop_id, const GValue *value,
     break;
   case Properties::TargetLevel:
     self->properties.target_level_lufs = g_value_get_double(value);
+    break;
+  case Properties::MaximalLoudnessRange:
+    self->properties.maximal_loudness_range_lu = g_value_get_double(value);
     break;
   case Properties::PerformLoudnessNormalization:
     self->properties.perform_loudness_normalization = g_value_get_boolean(value);
@@ -333,6 +340,11 @@ void get_property(GObject *object, guint prop_id, GValue *value,
     g_value_set_double(value, self->properties.target_level_lufs);
     GST_OBJECT_UNLOCK(self);
     break;
+  case Properties::MaximalLoudnessRange:
+    GST_OBJECT_LOCK(self);
+    g_value_set_double(value, self->properties.maximal_loudness_range_lu);
+    GST_OBJECT_UNLOCK(self);
+    break;
   case Properties::PerformLoudnessNormalization:
     GST_OBJECT_LOCK(self);
     g_value_set_boolean(value, self->properties.perform_loudness_normalization);
@@ -350,6 +362,7 @@ void ebur128control_init(EBUR128Control *self) {
   self->properties.integrated_loudness_lufs = -23.0;
   self->properties.loudness_range_lu = 12.0;
   self->properties.target_level_lufs = -23.0;
+  self->properties.maximal_loudness_range_lu = 12.0;
   self->properties.perform_loudness_normalization = false;
 
   self->xformed_properties.perform_loudness_normalization = false;
@@ -397,6 +410,13 @@ void ebur128control_class_init(EBUR128ControlClass *klass) {
       g_param_spec_double("target_level_lufs", "target level",
                           "EBU R 128 Target Level [LUFS]", -G_MAXDOUBLE,
                           G_MAXDOUBLE, -23.0,
+                          static_cast<GParamFlags>(G_PARAM_READWRITE)));
+
+  g_object_class_install_property(
+      gobject_class, static_cast<guint>(Properties::MaximalLoudnessRange),
+      g_param_spec_double("maximal_loudness_range_lu", "maximal loudness range",
+                          "EBU R 128 Maximal Loudness Range [LU]", 0,
+                          G_MAXDOUBLE, 12.0,
                           static_cast<GParamFlags>(G_PARAM_READWRITE)));
 
   g_object_class_install_property(
