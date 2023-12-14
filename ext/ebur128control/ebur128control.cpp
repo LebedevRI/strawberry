@@ -214,63 +214,6 @@ GstCaps *template_caps(bool passthrough) {
 
 }
 
-GstCaps *sink_getcaps(EBUR128Control *self, GstPad *srcpad,
-                      GstCaps *filter) {
-
-  GstCaps *sink_caps;
-  GstCaps *sink_template_caps =
-      template_caps(/*passthrough=*/self->xformed_properties.passthrough);
-
-  if (GstCaps *downstream_caps = gst_pad_get_allowed_caps(srcpad)) {
-    sink_caps = gst_caps_intersect_full(sink_template_caps, downstream_caps,
-                                        GST_CAPS_INTERSECT_FIRST);
-    gst_caps_unref(downstream_caps);
-  } else {
-    sink_caps = gst_caps_ref(sink_template_caps);
-  }
-  gst_caps_unref(sink_template_caps);
-
-  if (filter) {
-    GstCaps *tmp =
-        gst_caps_intersect_full(sink_caps, filter, GST_CAPS_INTERSECT_FIRST);
-    gst_caps_unref(sink_caps);
-    sink_caps = tmp;
-  }
-
-  return sink_caps;
-
-}
-
-gboolean sink_query_caps(GstPad *pad, GstObject *parent, GstQuery *query) {
-
-  (void)pad;
-
-  EBUR128Control *self = EBUR128CONTROL(parent);
-
-  g_assert (GST_QUERY_TYPE(query) == GST_QUERY_CAPS);
-
-  GstCaps *filter;
-  gst_query_parse_caps(query, &filter);
-
-  GstCaps *caps = sink_getcaps(self, GST_BASE_TRANSFORM(self)->srcpad, filter);
-  gst_query_set_caps_result(query, caps);
-  gst_caps_unref(caps);
-
-  return true;
-
-}
-
-gboolean sink_query(GstPad *pad, GstObject *parent, GstQuery *query) {
-
-  switch (GST_QUERY_TYPE(query)) {
-  case GST_QUERY_CAPS:
-    return sink_query_caps(pad, parent, query);
-  default:
-    return gst_pad_query_default(pad, parent, query);
-  }
-
-}
-
 EBUR128Control::XFormedProperties
 xform_properties(EBUR128Control::Properties properties) {
 
@@ -335,9 +278,15 @@ void set_property(GObject *object, guint prop_id, const GValue *value,
 
   GST_OBJECT_UNLOCK(self);
 
-  if (should_reconfigure_sink)
+  if (should_reconfigure_sink) {
+    GstCaps *caps = template_caps(self->xformed_properties.passthrough);
+    g_object_set(
+        G_OBJECT(GST_BASE_TRANSFORM(self)->sinkpad), "template",
+        gst_pad_template_new("sink", GST_PAD_SINK, GST_PAD_ALWAYS, caps),
+        nullptr);
+    gst_caps_unref(caps);
     gst_base_transform_reconfigure_sink(GST_BASE_TRANSFORM(self));
-
+  }
 }
 
 void get_property(GObject *object, guint prop_id, GValue *value,
@@ -377,8 +326,6 @@ void ebur128control_init(EBUR128Control *self) {
   self->committed_params.negotiated = false;
 
   gst_base_transform_set_gap_aware(GST_BASE_TRANSFORM(self), true);
-
-  gst_pad_set_query_function (GST_BASE_TRANSFORM(self)->sinkpad, sink_query);
 
 }
 
