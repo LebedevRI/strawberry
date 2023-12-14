@@ -212,6 +212,7 @@ class EngineBase : public QObject {
   // EBU R 128 Loudness Normalization
   bool ebur128_loudness_normalization_;
   double ebur128_target_level_lufs_;
+  double ebur128_maximal_loudness_range_lu_;
 
   // Buffering
   quint64 buffer_duration_nanosec_;

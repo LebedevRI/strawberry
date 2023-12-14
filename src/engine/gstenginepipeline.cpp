@@ -88,6 +88,7 @@ GstEnginePipeline::GstEnginePipeline(QObject *parent)
       ebur128_loudness_normalization_(false),
       ebur128_integrated_loudness_lufs_(std::nullopt),
       ebur128_target_level_lufs_(-23.0),
+      ebur128_maximal_loudness_range_lu_(12.0),
       buffer_duration_nanosec_(BackendSettingsPage::kDefaultBufferDuration * kNsecPerMsec),
       buffer_low_watermark_(BackendSettingsPage::kDefaultBufferLowWatermark),
       buffer_high_watermark_(BackendSettingsPage::kDefaultBufferHighWatermark),
@@ -258,6 +259,12 @@ void GstEnginePipeline::set_ebur128_loudness_normalization(const bool enabled) {
 void GstEnginePipeline::set_ebur128_target_level_lufs(const double ebur128_target_level_lufs) {
 
   ebur128_target_level_lufs_ = ebur128_target_level_lufs;
+
+}
+
+void GstEnginePipeline::set_ebur128_maximal_loudness_range_lu(const double ebur128_maximal_loudness_range_lu) {
+
+  ebur128_maximal_loudness_range_lu_ = ebur128_maximal_loudness_range_lu;
 
 }
 
@@ -1634,7 +1641,7 @@ void GstEnginePipeline::UpdateEBUR128LoudnessNormalizingGaindB() {
 
   if (volume_ebur128_ ) {
     g_object_set(G_OBJECT(volume_ebur128_), "integrated_loudness_lufs", ebur128_integrated_loudness_lufs_.value_or(ebur128_target_level_lufs_), nullptr);
-    g_object_set(G_OBJECT(volume_ebur128_), "loudness_range_lu", ebur128_loudness_range_lu_.value_or(0), nullptr);
+    g_object_set(G_OBJECT(volume_ebur128_), "loudness_range_lu", ebur128_loudness_range_lu_.value_or(ebur128_maximal_loudness_range_lu_), nullptr);
     g_object_set(G_OBJECT(volume_ebur128_), "target_level_lufs", ebur128_target_level_lufs_, nullptr);
     g_object_set(G_OBJECT(volume_ebur128_), "perform_loudness_normalization", ebur128_loudness_normalization_ && ebur128_integrated_loudness_lufs_.has_value(), nullptr);
   }

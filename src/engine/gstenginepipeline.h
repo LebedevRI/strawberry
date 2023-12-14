@@ -68,6 +68,7 @@ class GstEnginePipeline : public QObject {
   void set_replaygain(const bool enabled, const int mode, const double preamp, const double fallbackgain, const bool compression);
   void set_ebur128_loudness_normalization(const bool enabled);
   void set_ebur128_target_level_lufs(const double ebur128_target_level_lufs);
+  void set_ebur128_maximal_loudness_range_lu(const double ebur128_maximal_loudness_range_lu);
   void set_buffer_duration_nanosec(const quint64 duration_nanosec);
   void set_buffer_low_watermark(const double value);
   void set_buffer_high_watermark(const double value);
@@ -231,6 +232,7 @@ class GstEnginePipeline : public QObject {
   std::optional<double> ebur128_integrated_loudness_lufs_;
   std::optional<double> ebur128_loudness_range_lu_;
   double ebur128_target_level_lufs_;
+  double ebur128_maximal_loudness_range_lu_;
 
   // Buffering
   quint64 buffer_duration_nanosec_;
