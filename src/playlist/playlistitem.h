@@ -91,6 +91,7 @@ class PlaylistItem : public enable_shared_from_this<PlaylistItem> {
   QUrl StreamUrl() const { return HasTemporaryMetadata() && temp_metadata_.effective_stream_url().isValid() ? temp_metadata_.effective_stream_url() : Url(); }
 
   std::optional<double> effective_ebur128_integrated_loudness_lufs() const { return HasTemporaryMetadata() && temp_metadata_.is_valid() ? temp_metadata_.ebur128_integrated_loudness_lufs() : Metadata().ebur128_integrated_loudness_lufs(); }
+  std::optional<double> effective_ebur128_loudness_range_lu() const { return HasTemporaryMetadata() && temp_metadata_.is_valid() ? temp_metadata_.ebur128_loudness_range_lu() : Metadata().ebur128_loudness_range_lu(); }
 
   qint64 effective_beginning_nanosec() const { return HasTemporaryMetadata() && temp_metadata_.is_valid() && temp_metadata_.beginning_nanosec() != -1 ? temp_metadata_.beginning_nanosec() : Metadata().beginning_nanosec(); }
   qint64 effective_end_nanosec() const { return HasTemporaryMetadata() && temp_metadata_.is_valid() && temp_metadata_.end_nanosec() != -1 ? temp_metadata_.end_nanosec() : Metadata().end_nanosec(); }

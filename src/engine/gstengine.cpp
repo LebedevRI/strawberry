@@ -180,11 +180,11 @@ void GstEngine::StartPreloading(const QUrl &media_url, const QUrl &stream_url, c
 
 }
 
-bool GstEngine::Load(const QUrl &media_url, const QUrl &stream_url, const EngineBase::TrackChangeFlags change, const bool force_stop_at_end, const quint64 beginning_nanosec, const qint64 end_nanosec, const std::optional<double> ebur128_integrated_loudness_lufs) {
+bool GstEngine::Load(const QUrl &media_url, const QUrl &stream_url, const EngineBase::TrackChangeFlags change, const bool force_stop_at_end, const quint64 beginning_nanosec, const qint64 end_nanosec, const std::optional<double> ebur128_integrated_loudness_lufs, const std::optional<double> ebur128_loudness_range_lu) {
 
   EnsureInitialized();
 
-  EngineBase::Load(stream_url, media_url, change, force_stop_at_end, beginning_nanosec, end_nanosec, ebur128_integrated_loudness_lufs);
+  EngineBase::Load(stream_url, media_url, change, force_stop_at_end, beginning_nanosec, end_nanosec, ebur128_integrated_loudness_lufs, ebur128_loudness_range_lu);
 
   const QByteArray gst_url = FixupUrl(stream_url);
 
@@ -197,6 +197,7 @@ bool GstEngine::Load(const QUrl &media_url, const QUrl &stream_url, const Engine
   if (!crossfade && current_pipeline_ && current_pipeline_->stream_url() == stream_url && change & EngineBase::TrackChangeType::Auto) {
     // We're not crossfading, and the pipeline is already playing the URI we want, so just do nothing.
     current_pipeline_->SetEBUR128IntegratedLoudness_LUFS(ebur128_integrated_loudness_lufs);
+    current_pipeline_->SetEBUR128LoudnessRange_LU(ebur128_loudness_range_lu);
     return true;
   }
 
@@ -204,6 +205,7 @@ bool GstEngine::Load(const QUrl &media_url, const QUrl &stream_url, const Engine
   if (!pipeline) return false;
 
   pipeline->SetEBUR128IntegratedLoudness_LUFS(ebur128_integrated_loudness_lufs);
+  pipeline->SetEBUR128LoudnessRange_LU(ebur128_loudness_range_lu);
 
   if (crossfade) StartFadeout();
 
@@ -657,6 +659,7 @@ void GstEngine::PlayDone(const GstStateChangeReturn ret, const quint64 offset_na
       qLog(Info) << "Redirecting to" << redirect_url;
       auto new_pipeline = CreatePipeline(current_pipeline_->media_url(), current_pipeline_->stream_url(), redirect_url, end_nanosec_);
       new_pipeline->SetEBUR128IntegratedLoudness_LUFS(current_pipeline_->ebur128_integrated_loudness_lufs());
+      new_pipeline->SetEBUR128LoudnessRange_LU(current_pipeline_->ebur128_loudness_range_lu());
       current_pipeline_ = std::move(new_pipeline);
       Play(offset_nanosec);
       return;

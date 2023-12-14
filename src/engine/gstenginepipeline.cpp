@@ -1623,6 +1623,13 @@ void GstEnginePipeline::SetEBUR128IntegratedLoudness_LUFS(const std::optional<do
 
 }
 
+void GstEnginePipeline::SetEBUR128LoudnessRange_LU(const std::optional<double> ebur128_loudness_range_lu) {
+
+  ebur128_loudness_range_lu_ = ebur128_loudness_range_lu;
+  UpdateEBUR128LoudnessNormalizingGaindB();
+
+}
+
 void GstEnginePipeline::UpdateEBUR128LoudnessNormalizingGaindB() {
 
   if (volume_ebur128_ ) {

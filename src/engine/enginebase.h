@@ -104,7 +104,7 @@ class EngineBase : public QObject {
   virtual bool Init() = 0;
   virtual State state() const = 0;
   virtual void StartPreloading(const QUrl&, const QUrl&, const bool, const qint64, const qint64) {}
-  virtual bool Load(const QUrl &media_url, const QUrl &stream_url, const TrackChangeFlags change, const bool force_stop_at_end, const quint64 beginning_nanosec, const qint64 end_nanosec, const std::optional<double> ebur128_integrated_loudness_lufs);
+  virtual bool Load(const QUrl &media_url, const QUrl &stream_url, const TrackChangeFlags change, const bool force_stop_at_end, const quint64 beginning_nanosec, const qint64 end_nanosec, const std::optional<double> ebur128_integrated_loudness_lufs, const std::optional<double> ebur128_loudness_range_lu);
   virtual bool Play(const quint64 offset_nanosec) = 0;
   virtual void Stop(const bool stop_after = false) = 0;
   virtual void Pause() = 0;
@@ -132,7 +132,7 @@ class EngineBase : public QObject {
 
   // Plays a media stream represented with the URL 'u' from the given 'beginning' to the given 'end' (usually from 0 to a song's length).
   // Both markers should be passed in nanoseconds. 'end' can be negative, indicating that the real length of 'u' stream is unknown.
-  bool Play(const QUrl &media_url, const QUrl &stream_url, const TrackChangeFlags flags, const bool force_stop_at_end, const quint64 beginning_nanosec, const qint64 end_nanosec, const quint64 offset_nanosec, const std::optional<double> ebur128_integrated_loudness_lufs);
+  bool Play(const QUrl &media_url, const QUrl &stream_url, const TrackChangeFlags flags, const bool force_stop_at_end, const quint64 beginning_nanosec, const qint64 end_nanosec, const quint64 offset_nanosec, const std::optional<double> ebur128_integrated_loudness_lufs, const std::optional<double> ebur128_loudness_range_lu);
   void SetVolume(const uint volume);
 
  public slots:
