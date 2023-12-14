@@ -56,9 +56,12 @@ struct _EBUR128Control {
   struct Properties {
     gdouble integrated_loudness_lufs;
     gdouble target_level_lufs;
+    gboolean perform_loudness_normalization;
   } properties;
 
   struct XFormedProperties {
+    gboolean perform_loudness_normalization;
+
     gdouble volume;
 
     gboolean passthrough;
@@ -96,6 +99,8 @@ GST_DEBUG_CATEGORY_STATIC(GST_CAT_DEFAULT);
 
 template <typename T>
 void process(EBUR128Control *self, gpointer bytes, guint n_bytes) {
+
+  g_assert(self->committed_params.p.perform_loudness_normalization);
 
   T vol = self->committed_params.p.volume;
   auto *data = static_cast<T *>(bytes);
@@ -149,9 +154,13 @@ void commit_params(EBUR128Control *self, const GstAudioInfo *info) {
                    self->properties.integrated_loudness_lufs);
   GST_DEBUG_OBJECT(self, "configure target level %f lufs",
                    self->properties.target_level_lufs);
+  GST_DEBUG_OBJECT(self, "configure should normalize loudness %i",
+                   self->properties.perform_loudness_normalization);
 
   self->committed_params.p = self->xformed_properties;
 
+  GST_DEBUG_OBJECT(self, "configure will normalize loudness %i",
+                   self->xformed_properties.perform_loudness_normalization);
   GST_DEBUG_OBJECT(self, "configure volume %f",
                    self->committed_params.p.volume);
   GST_DEBUG_OBJECT(self, "set passthrough %d",
@@ -219,6 +228,8 @@ xform_properties(EBUR128Control::Properties properties) {
 
   EBUR128Control::XFormedProperties p;
 
+  p.perform_loudness_normalization = properties.perform_loudness_normalization;
+
   p.volume = mute_volume;
   p.passthrough = false;
 
@@ -237,8 +248,9 @@ xform_properties(EBUR128Control::Properties properties) {
       properties.integrated_loudness_lufs, properties.target_level_lufs);
 
   p.volume = dB_to_mult(loudness_normalizing_gain_db);
+  p.perform_loudness_normalization &= p.volume != neutral_volume;
 
-  p.passthrough = (p.volume == neutral_volume);
+  p.passthrough = !p.perform_loudness_normalization;
 
   return p;
 
@@ -247,6 +259,7 @@ xform_properties(EBUR128Control::Properties properties) {
 enum class Properties : guint {
   IntegratedLoudness = 1,
   TargetLevel,
+  PerformLoudnessNormalization,
 };
 
 void set_property(GObject *object, guint prop_id, const GValue *value,
@@ -262,6 +275,9 @@ void set_property(GObject *object, guint prop_id, const GValue *value,
     break;
   case Properties::TargetLevel:
     self->properties.target_level_lufs = g_value_get_double(value);
+    break;
+  case Properties::PerformLoudnessNormalization:
+    self->properties.perform_loudness_normalization = g_value_get_boolean(value);
     break;
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
@@ -305,6 +321,11 @@ void get_property(GObject *object, guint prop_id, GValue *value,
     g_value_set_double(value, self->properties.target_level_lufs);
     GST_OBJECT_UNLOCK(self);
     break;
+  case Properties::PerformLoudnessNormalization:
+    GST_OBJECT_LOCK(self);
+    g_value_set_boolean(value, self->properties.perform_loudness_normalization);
+    GST_OBJECT_UNLOCK(self);
+    break;
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
     break;
@@ -316,7 +337,9 @@ void ebur128control_init(EBUR128Control *self) {
 
   self->properties.integrated_loudness_lufs = -23.0;
   self->properties.target_level_lufs = -23.0;
+  self->properties.perform_loudness_normalization = false;
 
+  self->xformed_properties.perform_loudness_normalization = false;
   self->xformed_properties.volume = neutral_volume;
   self->xformed_properties.passthrough = true;
 
@@ -355,6 +378,13 @@ void ebur128control_class_init(EBUR128ControlClass *klass) {
                           "EBU R 128 Target Level [LUFS]", -G_MAXDOUBLE,
                           G_MAXDOUBLE, -23.0,
                           static_cast<GParamFlags>(G_PARAM_READWRITE)));
+
+  g_object_class_install_property(
+      gobject_class, static_cast<guint>(Properties::PerformLoudnessNormalization),
+      g_param_spec_boolean("perform_loudness_normalization",
+                           "perform loudness normalization",
+                           "should the loudness level be normalized?", false,
+                           static_cast<GParamFlags>(G_PARAM_READWRITE)));
 
   auto *filter_class = reinterpret_cast<GstAudioFilterClass *>(klass);
 
