@@ -73,6 +73,23 @@ struct _EBUR128Control {
   } committed_params;
 };
 
+bool operator==(const EBUR128Control::XFormedProperties &lhs,
+                const EBUR128Control::XFormedProperties &rhs) {
+
+  return std::tie(lhs.perform_loudness_normalization, lhs.volume,
+                  lhs.passthrough) ==
+         std::tie(rhs.perform_loudness_normalization, rhs.volume,
+                  rhs.passthrough);
+
+}
+
+bool operator!=(const EBUR128Control::XFormedProperties &lhs,
+                const EBUR128Control::XFormedProperties &rhs) {
+
+  return !(lhs == rhs);
+
+}
+
 #define GST_CAT_DEFAULT ebur128control_debug
 
 GST_DEBUG_CATEGORY_STATIC(GST_CAT_DEFAULT);
@@ -153,6 +170,17 @@ void commit_params(EBUR128Control *self, const GstAudioInfo *info) {
   }
 
   self->committed_params.negotiated = true;
+
+}
+
+void before_transform (GstBaseTransform * base, GstBuffer * buffer) {
+
+  (void)buffer;
+
+  EBUR128Control *self = EBUR128CONTROL(base);
+
+  if(self->committed_params.p != self->xformed_properties)
+    commit_params(self, GST_AUDIO_FILTER_INFO (self));
 
 }
 
@@ -320,6 +348,7 @@ void ebur128control_class_init(EBUR128ControlClass *klass) {
   filter_class->setup = GST_DEBUG_FUNCPTR(setup);
 
   auto *trans_class = reinterpret_cast<GstBaseTransformClass *>(klass);
+  trans_class->before_transform = GST_DEBUG_FUNCPTR (before_transform);
   trans_class->transform_ip = GST_DEBUG_FUNCPTR(transform_ip);
   trans_class->transform_ip_on_passthrough = false;
 
