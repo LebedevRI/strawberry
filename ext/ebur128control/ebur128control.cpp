@@ -66,7 +66,15 @@ struct _EBUR128Control {
     gboolean perform_loudness_normalization;
     gboolean perform_loudness_range_compression;
 
-    gdouble volume;
+    struct {
+      gdouble volume;
+    } normalizer;
+
+    struct {
+      gdouble volume_pre;
+      gdouble scale;
+      gdouble volume_post;
+    } compressor;
 
     gboolean passthrough;
   } xformed_properties;
@@ -84,10 +92,10 @@ bool operator==(const EBUR128Control::XFormedProperties &lhs,
                 const EBUR128Control::XFormedProperties &rhs) {
 
   return std::tie(lhs.perform_loudness_normalization,
-                  lhs.perform_loudness_range_compression, lhs.volume,
+                  lhs.perform_loudness_range_compression, lhs.normalizer.volume,
                   lhs.passthrough) ==
          std::tie(rhs.perform_loudness_normalization,
-                  rhs.perform_loudness_range_compression, rhs.volume,
+                  rhs.perform_loudness_range_compression, rhs.normalizer.volume,
                   rhs.passthrough);
 
 }
@@ -104,15 +112,45 @@ bool operator!=(const EBUR128Control::XFormedProperties &lhs,
 GST_DEBUG_CATEGORY_STATIC(GST_CAT_DEFAULT);
 
 template <typename T>
-void process(EBUR128Control *self, gpointer bytes, guint n_bytes) {
+void process_normalizer(EBUR128Control *self, gpointer bytes, guint n_bytes) {
 
   g_assert(self->committed_params.p.perform_loudness_normalization);
   g_assert(!self->committed_params.p.perform_loudness_range_compression);
 
-  T vol = self->committed_params.p.volume;
+  T vol = self->committed_params.p.normalizer.volume;
   auto *data = static_cast<T *>(bytes);
   for (guint i = 0, num_samples = n_bytes / sizeof(T); i != num_samples; i++) {
     *data++ *= vol;
+  }
+
+}
+template <typename T>
+void process_compressor(EBUR128Control *self, gpointer bytes, guint n_bytes) {
+
+  g_assert(self->committed_params.p.perform_loudness_range_compression);
+
+  T vol_pre = self->committed_params.p.compressor.volume_pre;
+  T scale = self->committed_params.p.compressor.scale;
+  T vol_post = self->committed_params.p.compressor.volume_post;
+  auto *data = static_cast<T *>(bytes);
+  for (guint i = 0, num_samples = n_bytes / sizeof(T); i != num_samples; i++) {
+    const T src_sample = *data;
+
+    if(std::abs(src_sample) < T(std::pow(10.0, -70.0/20.0))) {
+      data++;
+      continue;
+    }
+
+    T x = src_sample;
+    x *= vol_pre;
+    x  = std::abs(x);
+    x  = std::log(x);
+    x *= scale;
+    x  = std::exp(x);
+    x = std::copysign(/*mag=*/x, /*sgn=*/src_sample);
+    x *= vol_post;
+    *data = x;
+    data++;
   }
 
 }
@@ -139,10 +177,10 @@ GstFlowReturn transform_ip(GstBaseTransform *base, GstBuffer *outbuf) {
   GstMapInfo map;
   gst_buffer_map(outbuf, &map, GST_MAP_READWRITE);
 
-  if (self->committed_params.p.volume == mute_volume) {
+  if (self->committed_params.p.normalizer.volume == mute_volume) {
     memset(map.data, 0, map.size);
     GST_BUFFER_FLAG_SET(outbuf, GST_BUFFER_FLAG_GAP);
-  } else if (self->committed_params.p.volume != neutral_volume) {
+  } else if (self->committed_params.p.normalizer.volume != neutral_volume) {
     self->committed_params.process(self, map.data, map.size);
   }
 
@@ -177,7 +215,13 @@ void commit_params(EBUR128Control *self, const GstAudioInfo *info) {
   GST_DEBUG_OBJECT(self, "configure will compress loudness range %i",
                    self->xformed_properties.perform_loudness_range_compression);
   GST_DEBUG_OBJECT(self, "configure volume %f",
-                   self->committed_params.p.volume);
+                   self->committed_params.p.normalizer.volume);
+  GST_DEBUG_OBJECT(self, "configure compressor volume pre %f",
+                   self->committed_params.p.compressor.volume_pre);
+  GST_DEBUG_OBJECT(self, "configure compressor scale %f",
+                   self->committed_params.p.compressor.scale);
+  GST_DEBUG_OBJECT(self, "configure compressor volume post %f",
+                   self->committed_params.p.compressor.volume_post);
   GST_DEBUG_OBJECT(self, "set passthrough %d",
                    self->committed_params.p.passthrough);
 
@@ -186,10 +230,16 @@ void commit_params(EBUR128Control *self, const GstAudioInfo *info) {
 
   switch (GST_AUDIO_INFO_FORMAT(info)) {
   case GST_AUDIO_FORMAT_F32:
-    self->committed_params.process = process<gfloat>;
+    self->committed_params.process =
+        self->xformed_properties.perform_loudness_range_compression
+            ? process_compressor<gfloat>
+            : process_normalizer<gfloat>;
     break;
   case GST_AUDIO_FORMAT_F64:
-    self->committed_params.process = process<gdouble>;
+    self->committed_params.process =
+        self->xformed_properties.perform_loudness_range_compression
+            ? process_compressor<gdouble>
+            : process_normalizer<gdouble>;
     break;
   default:
     g_assert(self->committed_params.p.passthrough);
@@ -246,7 +296,12 @@ xform_properties(EBUR128Control::Properties properties) {
   p.perform_loudness_normalization = properties.perform_loudness_normalization;
   p.perform_loudness_range_compression = properties.perform_loudness_range_compression;
 
-  p.volume = mute_volume;
+  p.normalizer.volume = mute_volume;
+
+  p.compressor.volume_pre = 1.0;
+  p.compressor.scale = 1.0;
+  p.compressor.volume_post = 1.0;
+
   p.passthrough = false;
 
   auto computeGain_dB = [](double source_dB, double target_dB) {
@@ -263,10 +318,19 @@ xform_properties(EBUR128Control::Properties properties) {
   double loudness_normalizing_gain_db = computeGain_dB(
       properties.integrated_loudness_lufs, properties.target_level_lufs);
 
-  p.volume = dB_to_mult(loudness_normalizing_gain_db);
-  p.perform_loudness_normalization &= p.volume != neutral_volume;
+  p.normalizer.volume = dB_to_mult(loudness_normalizing_gain_db);
+  p.perform_loudness_normalization &= p.normalizer.volume != neutral_volume;
 
-  p.perform_loudness_range_compression &= properties.loudness_range_lu > properties.maximal_loudness_range_lu;
+  p.compressor.volume_pre = dB_to_mult(
+      computeGain_dB(properties.integrated_loudness_lufs, /*target_dB=*/0.0));
+  p.compressor.scale =
+      properties.maximal_loudness_range_lu / properties.loudness_range_lu;
+  p.compressor.volume_post = dB_to_mult(computeGain_dB(
+      /*source_dB=*/0.0, properties.perform_loudness_normalization
+                             ? properties.target_level_lufs
+                             : properties.integrated_loudness_lufs));
+
+  p.perform_loudness_range_compression &= p.compressor.scale < 1.0;
 
   p.passthrough = !(p.perform_loudness_normalization || p.perform_loudness_range_compression);
 
@@ -389,7 +453,7 @@ void ebur128control_init(EBUR128Control *self) {
 
   self->xformed_properties.perform_loudness_normalization = false;
   self->xformed_properties.perform_loudness_range_compression = false;
-  self->xformed_properties.volume = neutral_volume;
+  self->xformed_properties.normalizer.volume = neutral_volume;
   self->xformed_properties.passthrough = true;
 
   self->committed_params.p = self->xformed_properties;
