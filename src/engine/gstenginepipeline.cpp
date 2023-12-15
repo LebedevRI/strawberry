@@ -86,6 +86,7 @@ GstEnginePipeline::GstEnginePipeline(QObject *parent)
       rg_fallbackgain_(0.0),
       rg_compression_(true),
       ebur128_loudness_normalization_(false),
+      ebur128_loudness_range_compression_(false),
       ebur128_integrated_loudness_lufs_(std::nullopt),
       ebur128_target_level_lufs_(-23.0),
       ebur128_maximal_loudness_range_lu_(12.0),
@@ -253,6 +254,12 @@ void GstEnginePipeline::set_replaygain(const bool enabled, const int mode, const
 void GstEnginePipeline::set_ebur128_loudness_normalization(const bool enabled) {
 
   ebur128_loudness_normalization_ = enabled;
+
+}
+
+void GstEnginePipeline::set_ebur128_loudness_range_compression(const bool enabled) {
+
+  ebur128_loudness_range_compression_ = enabled;
 
 }
 
@@ -630,7 +637,7 @@ bool GstEnginePipeline::InitAudioBin(QString &error) {
   }
 
   // Create the EBU R 128 loudness normalization volume element if enabled.
-  if (ebur128_loudness_normalization_) {
+  if (ebur128_loudness_normalization_ || ebur128_loudness_range_compression_) {
     volume_ebur128_ = CreateElement("strawberry-ebur128control", "ebur128_volume", audiobin_, error);
     if (!volume_ebur128_) {
       return false;
@@ -705,7 +712,7 @@ bool GstEnginePipeline::InitAudioBin(QString &error) {
   }
 
   // Link EBU R 128 loudness normalization volume element if enabled.
-  if (ebur128_loudness_normalization_ && volume_ebur128_) {
+  if ((ebur128_loudness_normalization_ || ebur128_loudness_range_compression_) && volume_ebur128_) {
     if (!gst_element_link(element_link, volume_ebur128_)) {
       error = "Failed to link EBU R 128 volume element.";
       return false;

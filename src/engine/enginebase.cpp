@@ -52,6 +52,7 @@ EngineBase::EngineBase(QObject *parent)
       rg_fallbackgain_(0.0),
       rg_compression_(true),
       ebur128_loudness_normalization_(false),
+      ebur128_loudness_range_compression_(false),
       ebur128_target_level_lufs_(-23.0),
       ebur128_maximal_loudness_range_lu_(12.0),
       buffer_duration_nanosec_(BackendSettingsPage::kDefaultBufferDuration * kNsecPerMsec),
@@ -172,6 +173,7 @@ void EngineBase::ReloadSettings() {
   rg_compression_ = s.value("rgcompression", true).toBool();
 
   ebur128_loudness_normalization_ = s.value("ebur128_loudness_normalization", false).toBool();
+  ebur128_loudness_range_compression_ = s.value("ebur128_loudness_range_compression", false).toBool();
   ebur128_target_level_lufs_ = s.value("ebur128_target_level_lufs", -23.0).toDouble();
   ebur128_maximal_loudness_range_lu_ = s.value("ebur128_maximal_loudness_range_lu", 12.0).toDouble();
 
