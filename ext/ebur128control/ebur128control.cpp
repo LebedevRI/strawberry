@@ -59,10 +59,12 @@ struct _EBUR128Control {
     gdouble target_level_lufs;
     gdouble maximal_loudness_range_lu;
     gboolean perform_loudness_normalization;
+    gboolean perform_loudness_range_compression;
   } properties;
 
   struct XFormedProperties {
     gboolean perform_loudness_normalization;
+    gboolean perform_loudness_range_compression;
 
     gdouble volume;
 
@@ -81,9 +83,11 @@ struct _EBUR128Control {
 bool operator==(const EBUR128Control::XFormedProperties &lhs,
                 const EBUR128Control::XFormedProperties &rhs) {
 
-  return std::tie(lhs.perform_loudness_normalization, lhs.volume,
+  return std::tie(lhs.perform_loudness_normalization,
+                  lhs.perform_loudness_range_compression, lhs.volume,
                   lhs.passthrough) ==
-         std::tie(rhs.perform_loudness_normalization, rhs.volume,
+         std::tie(rhs.perform_loudness_normalization,
+                  rhs.perform_loudness_range_compression, rhs.volume,
                   rhs.passthrough);
 
 }
@@ -103,6 +107,7 @@ template <typename T>
 void process(EBUR128Control *self, gpointer bytes, guint n_bytes) {
 
   g_assert(self->committed_params.p.perform_loudness_normalization);
+  g_assert(!self->committed_params.p.perform_loudness_range_compression);
 
   T vol = self->committed_params.p.volume;
   auto *data = static_cast<T *>(bytes);
@@ -162,11 +167,15 @@ void commit_params(EBUR128Control *self, const GstAudioInfo *info) {
                    self->properties.maximal_loudness_range_lu);
   GST_DEBUG_OBJECT(self, "configure should normalize loudness %i",
                    self->properties.perform_loudness_normalization);
+  GST_DEBUG_OBJECT(self, "configure should compress loudness range %i",
+                   self->properties.perform_loudness_range_compression);
 
   self->committed_params.p = self->xformed_properties;
 
   GST_DEBUG_OBJECT(self, "configure will normalize loudness %i",
                    self->xformed_properties.perform_loudness_normalization);
+  GST_DEBUG_OBJECT(self, "configure will compress loudness range %i",
+                   self->xformed_properties.perform_loudness_range_compression);
   GST_DEBUG_OBJECT(self, "configure volume %f",
                    self->committed_params.p.volume);
   GST_DEBUG_OBJECT(self, "set passthrough %d",
@@ -235,6 +244,7 @@ xform_properties(EBUR128Control::Properties properties) {
   EBUR128Control::XFormedProperties p;
 
   p.perform_loudness_normalization = properties.perform_loudness_normalization;
+  p.perform_loudness_range_compression = properties.perform_loudness_range_compression;
 
   p.volume = mute_volume;
   p.passthrough = false;
@@ -256,7 +266,9 @@ xform_properties(EBUR128Control::Properties properties) {
   p.volume = dB_to_mult(loudness_normalizing_gain_db);
   p.perform_loudness_normalization &= p.volume != neutral_volume;
 
-  p.passthrough = !p.perform_loudness_normalization;
+  p.perform_loudness_range_compression &= properties.loudness_range_lu > properties.maximal_loudness_range_lu;
+
+  p.passthrough = !(p.perform_loudness_normalization || p.perform_loudness_range_compression);
 
   return p;
 
@@ -268,6 +280,7 @@ enum class Properties : guint {
   TargetLevel,
   MaximalLoudnessRange,
   PerformLoudnessNormalization,
+  PerformLoudnessRangeCompression,
 };
 
 void set_property(GObject *object, guint prop_id, const GValue *value,
@@ -292,6 +305,9 @@ void set_property(GObject *object, guint prop_id, const GValue *value,
     break;
   case Properties::PerformLoudnessNormalization:
     self->properties.perform_loudness_normalization = g_value_get_boolean(value);
+    break;
+  case Properties::PerformLoudnessRangeCompression:
+    self->properties.perform_loudness_range_compression = g_value_get_boolean(value);
     break;
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
@@ -350,6 +366,11 @@ void get_property(GObject *object, guint prop_id, GValue *value,
     g_value_set_boolean(value, self->properties.perform_loudness_normalization);
     GST_OBJECT_UNLOCK(self);
     break;
+  case Properties::PerformLoudnessRangeCompression:
+    GST_OBJECT_LOCK(self);
+    g_value_set_boolean(value, self->properties.perform_loudness_range_compression);
+    GST_OBJECT_UNLOCK(self);
+    break;
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
     break;
@@ -364,8 +385,10 @@ void ebur128control_init(EBUR128Control *self) {
   self->properties.target_level_lufs = -23.0;
   self->properties.maximal_loudness_range_lu = 12.0;
   self->properties.perform_loudness_normalization = false;
+  self->properties.perform_loudness_range_compression = false;
 
   self->xformed_properties.perform_loudness_normalization = false;
+  self->xformed_properties.perform_loudness_range_compression = false;
   self->xformed_properties.volume = neutral_volume;
   self->xformed_properties.passthrough = true;
 
@@ -424,6 +447,14 @@ void ebur128control_class_init(EBUR128ControlClass *klass) {
       g_param_spec_boolean("perform_loudness_normalization",
                            "perform loudness normalization",
                            "should the loudness level be normalized?", false,
+                           static_cast<GParamFlags>(G_PARAM_READWRITE)));
+
+  g_object_class_install_property(
+      gobject_class, static_cast<guint>(Properties::PerformLoudnessRangeCompression),
+      g_param_spec_boolean("perform_loudness_range_compression",
+                           "perform loudness range compression",
+                           "should the loudness range be compressed "
+                           "down to the max loudness range?", false,
                            static_cast<GParamFlags>(G_PARAM_READWRITE)));
 
   auto *filter_class = reinterpret_cast<GstAudioFilterClass *>(klass);
